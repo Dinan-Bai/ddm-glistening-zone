@@ -1,0 +1,1209 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="Interactive GNSS-R demo mapping delay-Doppler map cells onto the ocean surface.">
+<title>DDM Glistening Zone Explorer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+<style>
+:root{
+  --bg:#EDF0F3; --surface:#FFFFFF; --surface-2:#E3E8EC; --inset:#0A1017;
+  --line:#CAD3DA; --line-2:#B3C0C9;
+  --ink:#0E161E; --ink-2:#44525E; --ink-3:#71818D;
+  --accent:#0C7382; --accent-soft:#D8EDF0;
+  --delay:#CE7E0C; --dopp:#1FA2B9; --hot:#F02E78;
+  --shadow:0 1px 2px rgba(14,22,30,.06), 0 8px 24px -12px rgba(14,22,30,.18);
+  --radius:10px;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0A0F14; --surface:#131B23; --surface-2:#1B2630; --inset:#080D14;
+    --line:#26333E; --line-2:#33434F;
+    --ink:#E6EEF4; --ink-2:#A2B1BD; --ink-3:#73828F;
+    --accent:#3FC2D6; --accent-soft:#12303A;
+    --shadow:0 1px 2px rgba(0,0,0,.5), 0 10px 30px -14px rgba(0,0,0,.7);
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0A0F14; --surface:#131B23; --surface-2:#1B2630; --inset:#080D14;
+  --line:#26333E; --line-2:#33434F;
+  --ink:#E6EEF4; --ink-2:#A2B1BD; --ink-3:#73828F;
+  --accent:#3FC2D6; --accent-soft:#12303A;
+  --shadow:0 1px 2px rgba(0,0,0,.5), 0 10px 30px -14px rgba(0,0,0,.7);
+}
+
+*{box-sizing:border-box}
+body{
+  margin:0;
+  background:var(--bg); color:var(--ink);
+  font-family:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  font-size:15px; line-height:1.55;
+  padding-inline:20px; padding-block:28px 56px;
+  -webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:1180px; margin:0 auto; display:flex; flex-direction:column; gap:22px}
+
+/* ---------- header ---------- */
+.eyebrow{
+  font-size:11px; font-weight:600; letter-spacing:.11em; text-transform:uppercase;
+  color:var(--accent); margin:0 0 10px;
+}
+h1{
+  font-size:clamp(28px,4.2vw,40px); line-height:1.08; letter-spacing:-.022em;
+  font-weight:600; margin:0; text-wrap:balance;
+}
+.lede{
+  margin:12px 0 0; max-width:64ch; color:var(--ink-2); font-size:16px;
+}
+.lede b{color:var(--ink); font-weight:600}
+
+/* ---------- readout ---------- */
+.readout{
+  display:grid; grid-template-columns:repeat(auto-fit,minmax(168px,1fr));
+  gap:1px; background:var(--line); border:1px solid var(--line);
+  border-radius:var(--radius); overflow:hidden;
+}
+.stat{background:var(--surface); padding:11px 14px 12px}
+.stat .k{
+  font-size:10px; font-weight:600; letter-spacing:.09em; text-transform:uppercase;
+  color:var(--ink-3); display:block; margin-bottom:3px;
+}
+.stat .v{
+  display:block;
+  font-family:"IBM Plex Mono",ui-monospace,Menlo,monospace; font-variant-numeric:tabular-nums;
+  font-size:14.5px; font-weight:500; color:var(--ink); letter-spacing:-.01em;
+}
+/* two patches are the normal case: hold both lines so the row never resizes */
+#r-cent{min-height:3.1em}
+.stat .v small{font-size:11.5px; color:var(--ink-3); font-weight:400}
+.stat.hotstat .v{color:var(--hot)}
+
+/* ---------- panels ---------- */
+.panels{display:grid; grid-template-columns:1fr 1fr; gap:18px; align-items:start}
+.card{
+  background:var(--surface); border:1px solid var(--line);
+  border-radius:var(--radius); box-shadow:var(--shadow); overflow:hidden;
+}
+.card-head{
+  display:flex; align-items:baseline; justify-content:space-between; gap:12px;
+  padding:13px 16px 11px; border-bottom:1px solid var(--line);
+}
+.card-head h2{font-size:14px; font-weight:600; margin:0; letter-spacing:-.005em}
+.card-head .sub{
+  font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:11px; color:var(--ink-3);
+}
+.plot{display:block; position:relative; background:var(--inset); line-height:0}
+.plot canvas{position:absolute; inset:0; width:100%; height:100%; display:block}
+.plot canvas.base{position:relative; height:auto}
+.plot:focus-visible{outline:2px solid var(--accent); outline-offset:-2px}
+.plot{cursor:crosshair}
+.view3d{cursor:grab; touch-action:none}
+.view3d.dragging{cursor:grabbing}
+.chips{display:flex; flex-wrap:wrap; gap:6px 18px; align-items:center}
+
+/* ---------- legend / colorbar strips ---------- */
+.strip{
+  background:var(--inset); padding:10px 16px 13px;
+  border-top:1px solid rgba(255,255,255,.07);
+}
+.legend{display:flex; flex-wrap:wrap; gap:6px 18px; align-items:center}
+.lg{display:flex; align-items:center; gap:7px; font-size:11.5px; color:#9FB0BE}
+.lg b{color:#DCE6EC; font-weight:500}
+.sw{width:18px; height:3px; border-radius:2px; flex:none}
+.sw.dash{height:0; border-top:2px dashed currentColor; width:18px}
+.sw.dot{width:9px; height:9px; border-radius:50%; background:#fff}
+.sw.box{width:13px; height:11px; border-radius:2px; background:var(--hot)}
+.cbar{display:flex; align-items:center; gap:10px}
+.cbar .ramp{
+  flex:1; height:9px; border-radius:5px; min-width:80px;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.14);
+}
+.cbar .t{
+  font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:10.5px; color:#9FB0BE;
+  font-variant-numeric:tabular-nums;
+}
+.cmaps{display:flex; gap:4px; margin-left:auto}
+.cmaps button{
+  font:500 10.5px/1 "IBM Plex Mono",monospace; letter-spacing:.04em; text-transform:uppercase;
+  background:rgba(255,255,255,.07); color:#9FB0BE; border:1px solid rgba(255,255,255,.12);
+  padding:5px 8px; border-radius:5px; cursor:pointer;
+}
+.cmaps button[aria-pressed="true"]{background:#1FA2B9; border-color:#1FA2B9; color:#02181D}
+
+/* ---------- controls ---------- */
+.controls{padding:16px}
+.ctl-grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(196px,1fr)); gap:16px 22px}
+.ctl label{
+  display:flex; justify-content:space-between; align-items:baseline; gap:8px;
+  font-size:11px; font-weight:600; letter-spacing:.07em; text-transform:uppercase;
+  color:var(--ink-3); margin-bottom:5px;
+}
+.ctl label .n{
+  font-family:"IBM Plex Mono",ui-monospace,monospace; font-variant-numeric:tabular-nums;
+  font-size:13px; font-weight:500; letter-spacing:0; text-transform:none; color:var(--ink);
+}
+input[type=range]{
+  -webkit-appearance:none; appearance:none; width:100%; height:20px;
+  background:transparent; cursor:pointer; display:block;
+}
+input[type=range]::-webkit-slider-runnable-track{height:4px; border-radius:2px; background:var(--surface-2)}
+input[type=range]::-moz-range-track{height:4px; border-radius:2px; background:var(--surface-2)}
+input[type=range]::-webkit-slider-thumb{
+  -webkit-appearance:none; width:15px; height:15px; border-radius:50%;
+  background:var(--accent); border:2px solid var(--surface); margin-top:-5.5px;
+  box-shadow:0 0 0 1px var(--line-2);
+}
+input[type=range]::-moz-range-thumb{
+  width:15px; height:15px; border-radius:50%; border:2px solid var(--surface);
+  background:var(--accent); box-shadow:0 0 0 1px var(--line-2);
+}
+input[type=range]:focus-visible{outline:2px solid var(--accent); outline-offset:3px; border-radius:4px}
+.ctl-foot{
+  display:flex; flex-wrap:wrap; gap:10px 16px; align-items:center;
+  margin-top:16px; padding-top:14px; border-top:1px solid var(--line);
+  font-size:12.5px; color:var(--ink-2);
+}
+.pill{
+  font:500 11px/1 "IBM Plex Mono",monospace; letter-spacing:.03em;
+  padding:6px 10px; border-radius:20px; border:1px solid var(--line-2); color:var(--ink-2);
+  background:var(--surface-2); cursor:pointer;
+}
+.pill[aria-pressed="true"]{background:var(--accent); border-color:var(--accent); color:var(--surface)}
+#pin[aria-pressed="true"]{background:var(--hot); border-color:var(--hot); color:#fff}
+.hint{margin-left:auto; color:var(--ink-3); font-size:12px}
+kbd{
+  font:500 11px/1 "IBM Plex Mono",monospace; background:var(--surface-2);
+  border:1px solid var(--line-2); border-bottom-width:2px; border-radius:4px; padding:2px 5px; color:var(--ink-2);
+}
+
+/* ---------- notes ---------- */
+.notes{display:grid; grid-template-columns:repeat(auto-fit,minmax(255px,1fr)); gap:20px 26px}
+.note h3{
+  font-size:12px; font-weight:600; letter-spacing:.07em; text-transform:uppercase;
+  color:var(--accent); margin:0 0 7px;
+}
+.note p{margin:0; font-size:14px; color:var(--ink-2); max-width:52ch}
+.note p em{color:var(--ink); font-style:normal; font-weight:600}
+hr.rule{border:0; border-top:1px solid var(--line); margin:2px 0}
+footer{font-size:12.5px; color:var(--ink-3); max-width:76ch}
+footer code{
+  font-family:"IBM Plex Mono",monospace; font-size:11.5px;
+  background:var(--surface-2); padding:1px 5px; border-radius:4px; color:var(--ink-2);
+}
+footer a{color:var(--accent)}
+
+@media (max-width:860px){
+  .panels{grid-template-columns:1fr}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important; animation:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <p class="eyebrow">GNSS-R &middot; GPS L1 C/A &middot; bistatic forward scatter</p>
+    <h1>Where on the ocean does one DDM pixel look?</h1>
+    <p class="lede">Every cell of a delay&ndash;Doppler map collects power from the sea surface where an <b>iso-range ellipse</b> crosses an <b>iso-Doppler hyperbola</b>. Point at a pixel on the DDM and its footprint lights up on the surface &mdash; usually in <b>two places at once</b>.</p>
+  </header>
+
+
+  <div class="panels">
+    <section class="card">
+      <div class="card-head">
+        <h2>Delay&ndash;Doppler map</h2>
+        <span class="sub" id="ddm-dims">&mdash;</span>
+      </div>
+      <div class="plot" id="ddmPlot" tabindex="0" role="application"
+           aria-label="Delay-Doppler map. Move the pointer or use arrow keys to select a cell; press Enter to pin it.">
+        <canvas class="base" id="cDdm"></canvas>
+        <canvas id="cDdmOv"></canvas>
+      </div>
+      <div class="strip">
+        <div class="cbar">
+          <span class="t">&minus;20&nbsp;dB</span>
+          <div class="ramp" id="ramp"></div>
+          <span class="t">0&nbsp;dB</span>
+          <div class="cmaps">
+            <button id="cmV" aria-pressed="true">Viridis</button>
+            <button id="cmT" aria-pressed="false">Turbo</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-head">
+        <h2>Ocean surface, specular-centred</h2>
+        <span class="sub" id="surf-dims">&mdash;</span>
+      </div>
+      <div class="plot" id="surfPlot" tabindex="0" role="application"
+           aria-label="Ocean surface with iso-delay and iso-Doppler contours. Move the pointer over the surface to select the matching DDM cell.">
+        <canvas class="base" id="cSurf"></canvas>
+        <canvas id="cCont"></canvas>
+        <canvas id="cSurfOv"></canvas>
+      </div>
+      <div class="strip">
+        <div class="legend">
+          <span class="lg"><span class="sw" style="background:#CE7E0C"></span>iso-delay, <b id="lg-delay">1 chip</b></span>
+          <span class="lg"><span class="sw" style="background:#1FA2B9"></span>iso-Doppler, <b id="lg-dopp">&mdash;</b></span>
+          <span class="lg"><span class="sw box"></span><b>selected cell</b></span>
+          <span class="lg"><span class="sw dot"></span>specular point</span>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <div class="readout" id="readout" aria-live="polite">
+    <div class="stat"><span class="k">Delay bin</span><span class="v" id="r-delay">&mdash;</span></div>
+    <div class="stat"><span class="k">Extra path</span><span class="v" id="r-path">&mdash;</span></div>
+    <div class="stat"><span class="k">Doppler bin</span><span class="v" id="r-dopp">&mdash;</span></div>
+    <div class="stat"><span class="k">Cell power</span><span class="v" id="r-pow">&mdash;</span></div>
+    <div class="stat hotstat"><span class="k">Surface footprint</span><span class="v" id="r-area">&mdash;</span></div>
+    <div class="stat"><span class="k">Patch centres</span><span class="v" id="r-cent">&mdash;</span></div>
+  </div>
+
+  <section class="card controls">
+    <div class="ctl-grid">
+      <div class="ctl">
+        <label for="s-theta">Incidence angle <span class="n" id="v-theta">30&deg;</span></label>
+        <input type="range" id="s-theta" min="0" max="65" step="1" value="30">
+      </div>
+      <div class="ctl">
+        <label for="s-alt">Receiver altitude <span class="n" id="v-alt">520 km</span></label>
+        <input type="range" id="s-alt" min="300" max="850" step="10" value="520">
+      </div>
+      <div class="ctl">
+        <label for="s-psi">Receiver heading <span class="n" id="v-psi">0&deg;</span></label>
+        <input type="range" id="s-psi" min="-90" max="90" step="5" value="0">
+      </div>
+      <div class="ctl">
+        <label for="s-wind">Wind speed <span class="n" id="v-wind">8 m/s</span></label>
+        <input type="range" id="s-wind" min="2" max="20" step="0.5" value="8">
+      </div>
+      <div class="ctl">
+        <label for="s-chips">DDM delay span <span class="n" id="v-chips">12 chips</span></label>
+        <input type="range" id="s-chips" min="3" max="24" step="1" value="12">
+      </div>
+    </div>
+    <div class="ctl-foot">
+      <button class="pill" id="pin" aria-pressed="false">Pin selection</button>
+      <button class="pill" id="glow" aria-pressed="true">Glistening zone</button>
+      <span class="hint">Hover either panel &middot; <kbd>&larr;</kbd><kbd>&rarr;</kbd><kbd>&uarr;</kbd><kbd>&darr;</kbd> to step cells &middot; <kbd>Enter</kbd> to pin</span>
+    </div>
+  </section>
+
+  <hr class="rule">
+
+  <div class="notes">
+    <div class="note">
+      <h3>Why an ellipse and a hyperbola</h3>
+      <p>Points at equal total path length T&rarr;surface&rarr;R lie on an ellipsoid with the two satellites as foci; where it meets the sea it draws an <em>ellipse</em> around the specular point. Points sharing a range-rate draw <em>hyperbola-like</em> curves set mainly by the receiver&rsquo;s velocity &mdash; the transmitter is 20&nbsp;000&nbsp;km away, so it barely tilts them.</p>
+    </div>
+    <div class="note">
+      <h3>The two-fold ambiguity</h3>
+      <p>An ellipse and a hyperbola cross <em>twice</em>. A single DDM cell therefore sums power from two patches on opposite sides of the specular point, and no amount of processing can tell them apart from one measurement. Only at zero delay do the two merge into the specular blob.</p>
+    </div>
+    <div class="note">
+      <h3>Reading the horseshoe</h3>
+      <p>The bright arch is the <em>support boundary</em>, not a feature of the sea. The delay-&tau; ring has a half-width in Doppler proportional to &radic;&tau;, so no surface point can produce a large Doppler at small delay &mdash; the empty region above the arch is geometrically forbidden.</p>
+    </div>
+  </div>
+
+  <section class="card">
+    <div class="card-head">
+      <h2>Scene geometry</h2>
+      <span class="sub">drag to orbit</span>
+    </div>
+    <div class="plot view3d" id="viewPlot" tabindex="0" role="img"
+         aria-label="Three-dimensional schematic of the GNSS-R geometry: transmitter, specular point, receiver, incidence angle, receiver velocity and the glistening zone.">
+      <canvas class="base" id="cView"></canvas>
+    </div>
+    <div class="strip">
+      <div class="chips" id="view-chips"></div>
+    </div>
+  </section>
+
+  <footer>
+    <p><strong>Model.</strong> Flat-plane bistatic geometry in a specular-centred ENU frame; delay <code>(|r&minus;R&#7451;| + |R&#7523;&minus;r| &minus; d&#8320;)/c</code> in L1 C/A chips (1&nbsp;chip = 293.05&nbsp;m), Doppler <code>(&#251;&#7451;&middot;v&#7451; &minus; &#251;&#7523;&middot;v&#7523;)/&lambda;</code> referenced to the specular point. Surface power uses Zavorotny&ndash;Voronovich geometric optics, <code>&sigma;&#8304; = &pi;|&#8476;|&sup2;(q/q&#7527;)&#8308;P(&minus;q&#8869;/q&#7527;)</code>, with a Gaussian slope PDF and Katzberg-scaled Cox&ndash;Munk mean-square slope. The DDM is formed by binning the surface integral and convolving with <code>|&Lambda;(&Delta;&tau;)|&sup2;&middot;|sinc(&Delta;f&middot;T&#7522;)|&sup2;</code> for T&#7522;&nbsp;=&nbsp;1&nbsp;ms, so the map and the highlighted footprints come from exactly the same computation. Earth curvature, antenna pattern and receiver noise are omitted.</p>
+  </footer>
+</div>
+
+<script>
+(function(){
+"use strict";
+
+/* ============================ constants ============================ */
+const C = 299792458, F_L1 = 1575.42e6, LAM = C / F_L1;
+const CHIP_M = C / 1.023e6;              // 293.0522 m
+const MU = 3.986004418e14, R_EARTH = 6371e3;
+const H_T = 20200e3, V_T = 3874;         // GPS altitude / orbital speed
+const PSI_T = 150 * Math.PI / 180;       // fixed transmitter track azimuth
+const T_I = 1e-3;                        // coherent integration time
+const REFL = 0.6;                        // |R|^2, seawater at L1
+
+const PLOT_BG = '#080D14';
+const AX = '#8FA1B0', AX_DIM = 'rgba(160,180,196,0.30)';
+const C_DELAY = '#CE7E0C', C_DOPP = '#1FA2B9', C_HOT = '#F02E78';
+
+/* panel layout (internal units; canvases are CSS-scaled) */
+const D = { W:536, H:430, L:64, T:16, PW:440, PH:350 };   // DDM
+const S = { W:536, H:512, L:64, T:16, PW:440, PH:440 };   // surface
+const NF = 440;                                            // field resolution == S.PW
+const NBF = 36, NBT = 28;                                  // DDM bins: doppler x delay
+const DB_FLOOR = -20;
+
+/* ============================ colormaps ============================ */
+const VIRIDIS = ['#440154','#482878','#3E4A89','#31688E','#26828E','#1F9E89','#35B779','#6DCD59','#B4DE2C','#FDE725'];
+const TURBO   = ['#30123B','#4145AB','#4675ED','#39A2FC','#1BCFD4','#24ECA6','#61FC6C','#A4FC3B','#D1E834','#F3C63A','#FE9B2D','#E4440A','#7A0403'];
+function buildLUT(stops){
+  const lut = new Uint8Array(256*3);
+  const rgb = stops.map(h => [parseInt(h.slice(1,3),16), parseInt(h.slice(3,5),16), parseInt(h.slice(5,7),16)]);
+  for(let i=0;i<256;i++){
+    const t = i/255 * (rgb.length-1), k = Math.min(rgb.length-2, Math.floor(t)), f = t-k;
+    for(let c=0;c<3;c++) lut[i*3+c] = Math.round(rgb[k][c] + (rgb[k+1][c]-rgb[k][c])*f);
+  }
+  return lut;
+}
+const LUTS = { viridis: buildLUT(VIRIDIS), turbo: buildLUT(TURBO) };
+function rampCSS(stops){ return 'linear-gradient(90deg,' + stops.join(',') + ')'; }
+
+/* ============================ state ============================ */
+const st = {
+  theta:30, alt:520, psi:0, wind:8, chips:12,
+  cmap:'viridis', glow:true, pinned:false,
+  fi: Math.round(NBF*0.62), ti: Math.round(NBT*0.28),
+  cursor:null            // {x,y} in metres, when pointing at the surface
+};
+
+/* ============================ geometry ============================ */
+let G = null;
+function buildGeom(){
+  const th = st.theta*Math.PI/180, hr = st.alt*1000;
+  const Rt = [-H_T*Math.tan(th), 0, H_T];
+  const Rr = [ hr *Math.tan(th), 0, hr ];
+  const d0 = Math.hypot(Rt[0],Rt[1],Rt[2]) + Math.hypot(Rr[0],Rr[1],Rr[2]);
+  const vr = Math.sqrt(MU/(R_EARTH+hr));
+  const p  = st.psi*Math.PI/180;
+  G = {
+    th, hr, Rt, Rr, d0, vrMag:vr,
+    Vr:[vr*Math.cos(p), vr*Math.sin(p), 0],
+    Vt:[V_T*Math.cos(PSI_T), V_T*Math.sin(PSI_T), 0],
+    mss: 0.45*(0.003 + 0.00512*st.wind) / 2,   // per-component slope variance
+    f0: 0
+  };
+  G.f0 = fAbs(0,0);
+}
+function tauChips(x,y){
+  const d1 = Math.hypot(x-G.Rt[0], y-G.Rt[1], G.Rt[2]);
+  const d2 = Math.hypot(G.Rr[0]-x, G.Rr[1]-y, G.Rr[2]);
+  return (d1+d2-G.d0)/CHIP_M;
+}
+function fAbs(x,y){
+  const ax=x-G.Rt[0], ay=y-G.Rt[1], az=-G.Rt[2], d1=Math.hypot(ax,ay,az);
+  const bx=G.Rr[0]-x, by=G.Rr[1]-y, bz=G.Rr[2], d2=Math.hypot(bx,by,bz);
+  const a = (ax*G.Vt[0]+ay*G.Vt[1]+az*G.Vt[2])/d1;
+  const b = (bx*G.Vr[0]+by*G.Vr[1]+bz*G.Vr[2])/d2;
+  return (a-b)/LAM;
+}
+const fRel = (x,y) => fAbs(x,y) - G.f0;
+
+/* sigma0 * (1/R1^2 R2^2), normalised to the specular value */
+function scat(x,y){
+  const ax=x-G.Rt[0], ay=y-G.Rt[1], az=-G.Rt[2], d1=Math.hypot(ax,ay,az);
+  const bx=G.Rr[0]-x, by=G.Rr[1]-y, bz=G.Rr[2], d2=Math.hypot(bx,by,bz);
+  const qx = bx/d2 - ax/d1, qy = by/d2 - ay/d1, qz = bz/d2 - az/d1;
+  if(qz <= 1e-9) return 0;
+  const q2 = qx*qx+qy*qy+qz*qz, qz2 = qz*qz;
+  const sx = -qx/qz, sy = -qy/qz;
+  const P  = Math.exp(-(sx*sx+sy*sy)/(2*G.mss)) / (2*Math.PI*G.mss);
+  return Math.PI*REFL*(q2*q2)/(qz2*qz2)*P / (d1*d1*d2*d2);
+}
+
+/* radius along a ray where the delay reaches `target` chips */
+function rayRadius(ux,uy,target){
+  let lo=0, hi=2.0e6;
+  for(let k=0;k<44;k++){ const m=0.5*(lo+hi); if(tauChips(ux*m,uy*m)<target) lo=m; else hi=m; }
+  return 0.5*(lo+hi);
+}
+function niceCeil(v){
+  const e = Math.pow(10, Math.floor(Math.log10(v))), m = v/e;
+  return (m<=1?1:m<=2?2:m<=2.5?2.5:m<=5?5:10)*e;
+}
+function niceStep(v){
+  const e = Math.pow(10, Math.floor(Math.log10(v))), m = v/e;
+  return (m<1.5?1:m<3?2:m<7?5:10)*e;
+}
+
+/* ============================ fields ============================ */
+const fTau = new Float32Array(NF*NF);
+const fDop = new Float32Array(NF*NF);
+const base = new Uint8ClampedArray(NF*NF*3);
+let L = 1e5, dxm = 1, Fmax = 5000, tauLo = -1, tauHi = 12;
+let ddm = new Float32Array(NBF*NBT), ddmDB = new Float32Array(NBF*NBT);
+const sc = new Float32Array(NF*NF);
+const _mark = new Uint8Array(NF*NF), _seen = new Uint8Array(NF*NF);
+let lastRegions = [];
+
+function computeAll(){
+  buildGeom();
+  tauHi = st.chips; tauLo = -1;
+
+  /* window + Doppler span from the outermost delay ring */
+  let rmax = 0, fm = 0;
+  for(let a=0;a<360;a++){
+    const t = a*Math.PI/180, ux=Math.cos(t), uy=Math.sin(t);
+    const r = rayRadius(ux,uy,tauHi);
+    if(r>rmax) rmax=r;
+    const v = Math.abs(fRel(r*ux, r*uy));
+    if(v>fm) fm=v;
+  }
+  L = 1.16*rmax;
+  Fmax = niceCeil(fm*1.04);
+  dxm = 2*L/NF;
+
+  /* field arrays + glistening-zone background */
+  let smax = 0;
+  for(let j=0;j<NF;j++){
+    const y = L - (j+0.5)*dxm;
+    for(let i=0;i<NF;i++){
+      const x = -L + (i+0.5)*dxm, p = j*NF+i;
+      fTau[p] = tauChips(x,y);
+      fDop[p] = fRel(x,y);
+      const s = scat(x,y);
+      sc[p] = s; if(s>smax) smax=s;
+    }
+  }
+  for(let p=0;p<NF*NF;p++){
+    const v = st.glow ? Math.pow(sc[p]/smax, 0.55) : 0;
+    base[3*p  ] =  8 + 64*v;
+    base[3*p+1] = 13 + 71*v;
+    base[3*p+2] = 20 + 76*v;
+  }
+
+  /* DDM: bin the surface integral, then blur by |WAF|^2 */
+  const dT = (tauHi-tauLo)/NBT, dF = 2*Fmax/NBF;
+  const raw = new Float32Array(NBF*NBT);
+  for(let p=0;p<NF*NF;p++){
+    const ti = Math.floor((fTau[p]-tauLo)/dT); if(ti<0||ti>=NBT) continue;
+    const fi = Math.floor((fDop[p]+Fmax)/dF);  if(fi<0||fi>=NBF) continue;
+    raw[ti*NBF+fi] += sc[p];
+  }
+  const kT=[], kF=[];
+  for(let k=-3;k<=3;k++){ const u=Math.abs(k*dT); kT.push(u<1 ? (1-u)*(1-u) : 0); }
+  for(let k=-4;k<=4;k++){ const u=k*dF*T_I; kF.push(u===0?1:Math.pow(Math.sin(Math.PI*u)/(Math.PI*u),2)); }
+  const nT = kT.reduce((a,b)=>a+b,0), nF = kF.reduce((a,b)=>a+b,0);
+
+  const tmp = new Float32Array(NBF*NBT);
+  for(let t=0;t<NBT;t++) for(let f=0;f<NBF;f++){
+    let s=0;
+    for(let k=-4;k<=4;k++){ const q=f+k; if(q>=0&&q<NBF) s += raw[t*NBF+q]*kF[k+4]; }
+    tmp[t*NBF+f] = s/nF;
+  }
+  let dmax = 0;
+  for(let t=0;t<NBT;t++) for(let f=0;f<NBF;f++){
+    let s=0;
+    for(let k=-3;k<=3;k++){ const q=t+k; if(q>=0&&q<NBT) s += tmp[q*NBF+f]*kT[k+3]; }
+    s/=nT; ddm[t*NBF+f]=s; if(s>dmax) dmax=s;
+  }
+  for(let p=0;p<NBF*NBT;p++){
+    ddmDB[p] = dmax>0 ? 10*Math.log10(Math.max(ddm[p]/dmax, 1e-9)) : DB_FLOOR;
+  }
+}
+
+/* selected-cell bounds */
+function selBounds(){
+  const dT=(tauHi-tauLo)/NBT, dF=2*Fmax/NBF;
+  return {
+    tlo: tauLo + st.ti*dT, thi: tauLo + (st.ti+1)*dT,
+    flo: -Fmax + st.fi*dF, fhi: -Fmax + (st.fi+1)*dF,
+    dT, dF
+  };
+}
+
+/* connected patches of the selected cell's footprint */
+function footprint(b){
+  const mark = _mark; mark.fill(0); const seed=[];
+  for(let p=0;p<NF*NF;p++){
+    const t=fTau[p], f=fDop[p];
+    if(t>=b.tlo && t<b.thi && f>=b.flo && f<b.fhi){ mark[p]=1; seed.push(p); }
+  }
+  if(!seed.length) return [];
+  const seen = _seen; seen.fill(0); const out=[], stack=[];
+  for(let s=0;s<seed.length;s++){
+    const p0=seed[s]; if(seen[p0]) continue;
+    seen[p0]=1; stack.length=0; stack.push(p0);
+    let n=0, sx=0, sy=0;
+    while(stack.length){
+      const p=stack.pop(); n++; const i=p%NF, j=(p-i)/NF; sx+=i; sy+=j;
+      if(i>0        && mark[p-1]  && !seen[p-1]) { seen[p-1]=1;  stack.push(p-1); }
+      if(i<NF-1     && mark[p+1]  && !seen[p+1]) { seen[p+1]=1;  stack.push(p+1); }
+      if(j>0        && mark[p-NF] && !seen[p-NF]){ seen[p-NF]=1; stack.push(p-NF); }
+      if(j<NF-1     && mark[p+NF] && !seen[p+NF]){ seen[p+NF]=1; stack.push(p+NF); }
+    }
+    out.push({n, x:(-L+(sx/n+0.5)*dxm)/1000, y:(L-(sy/n+0.5)*dxm)/1000});
+  }
+  out.sort((a,b2)=>b2.n-a.n);
+  const cut = Math.max(3, out[0].n*0.10);
+  return out.filter(r=>r.n>=cut);
+}
+
+/* ============================ canvas setup ============================ */
+const DPR = Math.min(2, window.devicePixelRatio || 1);
+function ctxOf(id, W, H, scale){
+  const el = document.getElementById(id);
+  el.width = Math.round(W*scale); el.height = Math.round(H*scale);
+  el.style.aspectRatio = W + ' / ' + H;
+  const c = el.getContext('2d');
+  c.setTransform(scale,0,0,scale,0,0);
+  return c;
+}
+const gDdm   = ctxOf('cDdm',   D.W, D.H, DPR);
+const gDdmOv = ctxOf('cDdmOv', D.W, D.H, DPR);
+const gSurf  = ctxOf('cSurf',  S.W, S.H, 1);
+const gCont  = ctxOf('cCont',  S.W, S.H, DPR);
+const gSurfOv= ctxOf('cSurfOv',S.W, S.H, DPR);
+const surfImg = gSurf.createImageData(NF, NF);
+const heatCv  = document.createElement('canvas');
+heatCv.width = NBF; heatCv.height = NBT;
+const gHeat = heatCv.getContext('2d');
+
+const MONO = '"IBM Plex Mono",ui-monospace,Menlo,monospace';
+const SANS = '"IBM Plex Sans",system-ui,sans-serif';
+
+function halo(ctx, text, x, y, color, font, align, baseline){
+  ctx.font = font; ctx.textAlign = align||'left'; ctx.textBaseline = baseline||'middle';
+  ctx.lineWidth = 3.4; ctx.lineJoin = 'round'; ctx.strokeStyle = 'rgba(4,8,14,0.92)';
+  ctx.strokeText(text, x, y);
+  ctx.fillStyle = color; ctx.fillText(text, x, y);
+}
+
+/* ============================ DDM panel ============================ */
+function drawDDM(){
+  const lut = LUTS[st.cmap];
+  const img = gHeat.createImageData(NBF, NBT), px = img.data;
+  for(let t=0;t<NBT;t++) for(let f=0;f<NBF;f++){
+    const v = Math.max(0, Math.min(1, (ddmDB[t*NBF+f]-DB_FLOOR)/(0-DB_FLOOR)));
+    const k = Math.round(v*255)*3, o = (t*NBF+f)*4;
+    px[o]=lut[k]; px[o+1]=lut[k+1]; px[o+2]=lut[k+2]; px[o+3]=255;
+  }
+  gHeat.putImageData(img, 0, 0);
+
+  gDdm.setTransform(DPR,0,0,DPR,0,0);
+  gDdm.fillStyle = PLOT_BG; gDdm.fillRect(0,0,D.W,D.H);
+  gDdm.imageSmoothingEnabled = false;
+  gDdm.drawImage(heatCv, D.L, D.T, D.PW, D.PH);
+  gDdm.imageSmoothingEnabled = true;
+
+  /* frame */
+  gDdm.strokeStyle = 'rgba(160,180,196,0.45)'; gDdm.lineWidth = 1;
+  gDdm.strokeRect(D.L+0.5, D.T+0.5, D.PW-1, D.PH-1);
+
+  /* x ticks: Doppler */
+  gDdm.font = '11px ' + MONO; gDdm.fillStyle = AX;
+  gDdm.textAlign = 'center'; gDdm.textBaseline = 'top';
+  for(let k=-2;k<=2;k++){
+    const v = k*Fmax/2, x = D.L + (v+Fmax)/(2*Fmax)*D.PW;
+    gDdm.strokeStyle = 'rgba(160,180,196,0.5)'; gDdm.beginPath();
+    gDdm.moveTo(x, D.T+D.PH); gDdm.lineTo(x, D.T+D.PH+5); gDdm.stroke();
+    gDdm.fillText((v>0?'+':v<0?'−':'') + Math.abs(v/1000).toFixed(1), x, D.T+D.PH+8);
+  }
+  gDdm.font = '600 11px ' + SANS; gDdm.fillStyle = '#B6C6D2';
+  gDdm.fillText('DOPPLER  Δf  (kHz from specular)', D.L+D.PW/2, D.T+D.PH+28);
+
+  /* y ticks: delay */
+  const tStep = niceStep((tauHi-tauLo)/6);
+  gDdm.font = '11px ' + MONO; gDdm.fillStyle = AX;
+  gDdm.textAlign = 'right'; gDdm.textBaseline = 'middle';
+  for(let v=0; v<=tauHi+1e-9; v+=tStep){
+    const y = D.T + (v-tauLo)/(tauHi-tauLo)*D.PH;
+    if(y > D.T+D.PH) break;
+    gDdm.strokeStyle = 'rgba(160,180,196,0.5)'; gDdm.beginPath();
+    gDdm.moveTo(D.L-5, y); gDdm.lineTo(D.L, y); gDdm.stroke();
+    gDdm.fillText(v.toFixed(tStep<1?1:0), D.L-9, y);
+  }
+  gDdm.save();
+  gDdm.translate(15, D.T+D.PH/2); gDdm.rotate(-Math.PI/2);
+  gDdm.font = '600 11px ' + SANS; gDdm.fillStyle = '#B6C6D2';
+  gDdm.textAlign = 'center'; gDdm.textBaseline = 'middle';
+  gDdm.fillText('DELAY  τ  (C/A chips)', 0, 0);
+  gDdm.restore();
+}
+
+function drawDdmOverlay(){
+  gDdmOv.setTransform(DPR,0,0,DPR,0,0);
+  gDdmOv.clearRect(0,0,D.W,D.H);
+  const cw = D.PW/NBF, ch = D.PH/NBT;
+  const x = D.L + st.fi*cw, y = D.T + st.ti*ch;
+  gDdmOv.lineWidth = 3; gDdmOv.strokeStyle = 'rgba(4,8,14,0.85)';
+  gDdmOv.strokeRect(x-1.5, y-1.5, cw+3, ch+3);
+  gDdmOv.lineWidth = 2; gDdmOv.strokeStyle = C_HOT;
+  gDdmOv.strokeRect(x-1, y-1, cw+2, ch+2);
+  /* crosshair rails */
+  gDdmOv.setLineDash([3,4]); gDdmOv.lineWidth = 1;
+  gDdmOv.strokeStyle = 'rgba(240,46,120,0.55)';
+  gDdmOv.beginPath();
+  gDdmOv.moveTo(D.L, y+ch/2); gDdmOv.lineTo(x-2, y+ch/2);
+  gDdmOv.moveTo(x+cw+2, y+ch/2); gDdmOv.lineTo(D.L+D.PW, y+ch/2);
+  gDdmOv.moveTo(x+cw/2, D.T); gDdmOv.lineTo(x+cw/2, y-2);
+  gDdmOv.moveTo(x+cw/2, y+ch+2); gDdmOv.lineTo(x+cw/2, D.T+D.PH);
+  gDdmOv.stroke(); gDdmOv.setLineDash([]);
+  if(st.pinned){
+    halo(gDdmOv, 'PINNED', D.L+D.PW-7, D.T+9, C_HOT, '600 10px '+SANS, 'right', 'middle');
+  }
+}
+
+/* ============================ surface: static contour layer ============================ */
+const NC = 200;
+function drawContours(){
+  gCont.setTransform(DPR,0,0,DPR,0,0);
+  gCont.clearRect(0,0,S.W,S.H);
+  const N = NC+1, step = 2*L/NC;
+  const A = new Float32Array(N*N), B = new Float32Array(N*N);
+  for(let j=0;j<N;j++){ const y = L - j*step;
+    for(let i=0;i<N;i++){ const x = -L + i*step, p=j*N+i;
+      A[p] = tauChips(x,y); B[p] = fRel(x,y); } }
+  const px = i => S.L + i*(S.PW/NC), py = j => S.T + j*(S.PH/NC);
+
+  gCont.save();
+  gCont.beginPath(); gCont.rect(S.L, S.T, S.PW, S.PH); gCont.clip();
+
+  /* zero axes */
+  gCont.strokeStyle = 'rgba(200,218,232,0.16)'; gCont.lineWidth = 1; gCont.setLineDash([2,5]);
+  gCont.beginPath();
+  gCont.moveTo(S.L+S.PW/2, S.T); gCont.lineTo(S.L+S.PW/2, S.T+S.PH);
+  gCont.moveTo(S.L, S.T+S.PH/2); gCont.lineTo(S.L+S.PW, S.T+S.PH/2);
+  gCont.stroke(); gCont.setLineDash([]);
+
+  /* iso-Doppler first (under) */
+  const fStep = niceStep(Fmax/4.5);
+  gCont.strokeStyle = C_DOPP; gCont.lineWidth = 1.4;
+  for(let v=-Math.floor(Fmax/fStep)*fStep; v<=Fmax+1e-6; v+=fStep){
+    gCont.lineWidth = Math.abs(v)<1e-6 ? 2.4 : 1.6;
+    gCont.stroke(contourPath(B,NC,v,px,py));
+  }
+  /* iso-delay */
+  const dStep = tauHi<=8 ? 1 : tauHi<=16 ? 2 : 3;
+  gCont.strokeStyle = C_DELAY; gCont.lineWidth = 1.5;
+  for(let v=dStep; v<=tauHi+1e-9; v+=dStep) gCont.stroke(contourPath(A,NC,v,px,py));
+  gCont.restore();
+
+  /* ---- labels ---- */
+  gCont.save();
+  gCont.beginPath(); gCont.rect(S.L+1, S.T+1, S.PW-2, S.PH-2); gCont.clip();
+  const UX = Math.cos(-0.87), UY = Math.sin(-0.87);
+  const levels = [];
+  for(let v=dStep; v<=tauHi+1e-9; v+=dStep) levels.push(v);
+  let prev = null;
+  for(let n=levels.length-1; n>=0; n--){
+    const v = levels[n], r = rayRadius(UX,UY,v);
+    const x = S.L + (r*UX+L)/(2*L)*S.PW, y = S.T + (L-r*UY)/(2*L)*S.PH;
+    if(x < S.L+18 || x > S.L+S.PW-18 || y < S.T+16 || y > S.T+S.PH-16) continue;
+    if(prev && Math.hypot(x-prev[0], y-prev[1]) < 26) continue;
+    halo(gCont, n===levels.length-1 ? v+' chips' : String(v), x, y,
+         C_DELAY, '500 10.5px '+MONO, 'center', 'middle');
+    prev = [x,y];
+  }
+  const yLab = 0.87*L;
+  for(let v=-Math.floor(Fmax/fStep)*fStep; v<=Fmax+1e-6; v+=fStep){
+    let hit = null, prev = fRel(-L, yLab);
+    for(let i=1;i<=240;i++){
+      const x = -L + i*(2*L/240), cur = fRel(x, yLab);
+      if((prev-v)*(cur-v) <= 0 && prev!==cur){ hit = x - (2*L/240)*(cur-v)/(cur-prev); break; }
+      prev = cur;
+    }
+    if(hit===null) continue;
+    const cx = S.L + (hit+L)/(2*L)*S.PW;
+    if(cx < S.L+16 || cx > S.L+S.PW-16) continue;
+    const kHz = v/1000;
+    halo(gCont, (v>0?'+':v<0?'−':'') + Math.abs(kHz).toFixed(1), cx, S.T + (L-yLab)/(2*L)*S.PH, C_DOPP, '500 10.5px '+MONO, 'center', 'middle');
+  }
+  /* specular point + receiver velocity */
+  const ox = S.L+S.PW/2, oy = S.T+S.PH/2;
+  gCont.strokeStyle = '#fff'; gCont.lineWidth = 1.6;
+  gCont.beginPath(); gCont.arc(ox,oy,4.5,0,7); gCont.stroke();
+  gCont.beginPath(); gCont.moveTo(ox-8,oy); gCont.lineTo(ox+8,oy); gCont.moveTo(ox,oy-8); gCont.lineTo(ox,oy+8); gCont.stroke();
+  const p = st.psi*Math.PI/180, ax = Math.cos(p)*52, ay = -Math.sin(p)*52;
+  gCont.strokeStyle = 'rgba(255,255,255,0.72)'; gCont.lineWidth = 1.4;
+  gCont.beginPath(); gCont.moveTo(ox+ax*0.22, oy+ay*0.22); gCont.lineTo(ox+ax, oy+ay); gCont.stroke();
+  const ah = Math.atan2(ay,ax);
+  gCont.beginPath();
+  gCont.moveTo(ox+ax, oy+ay);
+  gCont.lineTo(ox+ax-7*Math.cos(ah-0.4), oy+ay-7*Math.sin(ah-0.4));
+  gCont.lineTo(ox+ax-7*Math.cos(ah+0.4), oy+ay-7*Math.sin(ah+0.4));
+  gCont.closePath(); gCont.fillStyle='rgba(255,255,255,0.72)'; gCont.fill();
+  halo(gCont, 'vRx', ox+ax*1.22, oy+ay*1.22, '#E4EDF3', '500 10px '+MONO, 'center', 'middle');
+  gCont.restore();
+
+  /* frame + axes */
+  gCont.strokeStyle = 'rgba(160,180,196,0.45)'; gCont.lineWidth = 1;
+  gCont.strokeRect(S.L+0.5, S.T+0.5, S.PW-1, S.PH-1);
+  const kmStep = niceStep(L/1000/3);
+  gCont.font = '11px ' + MONO; gCont.fillStyle = AX;
+  gCont.textAlign='center'; gCont.textBaseline='top';
+  for(let v=-Math.floor(L/1000/kmStep)*kmStep; v<=L/1000+1e-6; v+=kmStep){
+    const x = S.L + (v*1000+L)/(2*L)*S.PW;
+    gCont.strokeStyle='rgba(160,180,196,0.5)'; gCont.beginPath();
+    gCont.moveTo(x,S.T+S.PH); gCont.lineTo(x,S.T+S.PH+5); gCont.stroke();
+    gCont.fillText(String(Math.round(v)), x, S.T+S.PH+8);
+  }
+  gCont.textAlign='right'; gCont.textBaseline='middle';
+  for(let v=-Math.floor(L/1000/kmStep)*kmStep; v<=L/1000+1e-6; v+=kmStep){
+    const y = S.T + (L-v*1000)/(2*L)*S.PH;
+    gCont.strokeStyle='rgba(160,180,196,0.5)'; gCont.beginPath();
+    gCont.moveTo(S.L-5,y); gCont.lineTo(S.L,y); gCont.stroke();
+    gCont.fillText(String(Math.round(v)), S.L-9, y);
+  }
+  gCont.font='600 11px '+SANS; gCont.fillStyle='#B6C6D2';
+  gCont.textAlign='center'; gCont.textBaseline='top';
+  gCont.fillText('km ALONG INCIDENCE PLANE   (← transmitter · receiver →)', S.L+S.PW/2, S.T+S.PH+28);
+  gCont.save();
+  gCont.translate(15, S.T+S.PH/2); gCont.rotate(-Math.PI/2);
+  gCont.textAlign='center'; gCont.textBaseline='middle';
+  gCont.fillText('km CROSS-PLANE', 0, 0);
+  gCont.restore();
+}
+
+const MS_TBL = {1:[3,0],2:[0,1],3:[3,1],4:[1,2],5:[3,0,1,2],6:[0,2],7:[3,2],8:[2,3],9:[0,2],10:[0,1,2,3],11:[1,2],12:[1,3],13:[0,1],14:[3,0]};
+function contourPath(A,n,level,px,py){
+  const path = new Path2D(), N = n+1;
+  for(let j=0;j<n;j++) for(let i=0;i<n;i++){
+    const a=A[j*N+i], b=A[j*N+i+1], c=A[(j+1)*N+i+1], d=A[(j+1)*N+i];
+    let idx=0; if(a>level)idx|=1; if(b>level)idx|=2; if(c>level)idx|=4; if(d>level)idx|=8;
+    if(idx===0||idx===15) continue;
+    const segs = MS_TBL[idx];
+    for(let k=0;k<segs.length;k+=2){
+      const P1 = edgePt(segs[k],  i,j,a,b,c,d,level,px,py);
+      const P2 = edgePt(segs[k+1],i,j,a,b,c,d,level,px,py);
+      path.moveTo(P1[0],P1[1]); path.lineTo(P2[0],P2[1]);
+    }
+  }
+  return path;
+}
+function edgePt(e,i,j,a,b,c,d,l,px,py){
+  if(e===0) return [px(i+(l-a)/(b-a)), py(j)];
+  if(e===1) return [px(i+1), py(j+(l-b)/(c-b))];
+  if(e===2) return [px(i+(l-d)/(c-d)), py(j+1)];
+  return [px(i), py(j+(l-a)/(d-a))];
+}
+
+/* ============================ surface: field + highlight ============================ */
+function paintSurface(){
+  gSurf.setTransform(1,0,0,1,0,0);
+  gSurf.fillStyle = PLOT_BG; gSurf.fillRect(0,0,S.W,S.H);
+  const b = selBounds(), d = surfImg.data;
+  for(let p=0;p<NF*NF;p++){
+    let r=base[3*p], g=base[3*p+1], bl=base[3*p+2];
+    const t=fTau[p], f=fDop[p];
+    const inT = t>=b.tlo && t<b.thi, inF = f>=b.flo && f<b.fhi;
+    if(inT && inF){ r=240; g=46; bl=120; }
+    else if(inT){ r+=(230-r)*0.42; g+=(150-g)*0.42; bl+=(30-bl)*0.42; }
+    else if(inF){ r+=(50-r)*0.42;  g+=(195-g)*0.42; bl+=(225-bl)*0.42; }
+    const o=4*p; d[o]=r; d[o+1]=g; d[o+2]=bl; d[o+3]=255;
+  }
+  gSurf.putImageData(surfImg, S.L, S.T);
+}
+
+const TAG = ['A','B','C','D'];
+function drawSurfOverlay(regions){
+  gSurfOv.setTransform(DPR,0,0,DPR,0,0);
+  gSurfOv.clearRect(0,0,S.W,S.H);
+  gSurfOv.save();
+  gSurfOv.beginPath(); gSurfOv.rect(S.L,S.T,S.PW,S.PH); gSurfOv.clip();
+  regions.slice(0,4).forEach((r,k)=>{
+    const x = S.L + (r.x*1000+L)/(2*L)*S.PW, y = S.T + (L-r.y*1000)/(2*L)*S.PH;
+    halo(gSurfOv, TAG[k], x, y-15, '#FFD7E6', '600 10.5px '+MONO, 'center', 'middle');
+  });
+  if(st.cursor){
+    const x = S.L + (st.cursor.x+L)/(2*L)*S.PW, y = S.T + (L-st.cursor.y)/(2*L)*S.PH;
+    gSurfOv.beginPath(); gSurfOv.arc(x,y,3.2,0,7);
+    gSurfOv.fillStyle='#fff'; gSurfOv.fill();
+    gSurfOv.strokeStyle='rgba(4,8,14,0.85)'; gSurfOv.lineWidth=1.2; gSurfOv.stroke();
+  }
+  gSurfOv.restore();
+  if(st.pinned) halo(gSurfOv, 'PINNED', S.L+S.PW-7, S.T+9, C_HOT, '600 10px '+SANS, 'right', 'middle');
+}
+
+/* ============================ readout ============================ */
+const $ = id => document.getElementById(id);
+const sgn = (v,dp) => (v>0?'+':v<0?'−':'') + Math.abs(v).toFixed(dp);
+
+function updateReadout(regions){
+  const b = selBounds();
+  $('r-delay').innerHTML = b.tlo.toFixed(2) + ' – ' + b.thi.toFixed(2) + ' <small>chips</small>';
+  $('r-path').innerHTML  = Math.round(b.tlo*CHIP_M) + ' – ' + Math.round(b.thi*CHIP_M) + ' <small>m</small>';
+  $('r-dopp').innerHTML  = sgn(b.flo/1000,2) + ' – ' + sgn(b.fhi/1000,2) + ' <small>kHz</small>';
+  const db = ddmDB[st.ti*NBF+st.fi];
+  $('r-pow').innerHTML   = (db<=DB_FLOOR ? '≤ −20.0' : sgn(db,1)) + ' <small>dB</small>';
+
+  const cell = (dxm/1000)*(dxm/1000);
+  if(!regions.length){
+    $('r-area').innerHTML = 'none <small>— outside the horseshoe</small>';
+    $('r-cent').innerHTML = '—';
+  } else {
+    const areas = regions.map(r => r.n*cell);
+    const fmt = a => a<10 ? a.toFixed(1) : String(Math.round(a));
+    const hi = Math.max.apply(null, areas), lo = Math.min.apply(null, areas);
+    const even = areas.length > 1 && (hi-lo) < 0.15*hi;
+    $('r-area').innerHTML = regions.length + (regions.length>1?' patches':' patch') +
+      ' <small>' + (even ? fmt(areas[0]) + ' km² each'
+                         : areas.slice(0,2).map(fmt).join(' + ') + ' km²') + '</small>';
+    $('r-cent').innerHTML = regions.slice(0,2).map((r,k)=>
+      TAG[k] + ' (' + sgn(r.x,0) + ', ' + sgn(r.y,0) + ') <small>km</small>').join('<br>');
+  }
+}
+function updateChrome(){
+  const b = selBounds();
+  $('ddm-dims').textContent = NBF + ' × ' + NBT + ' cells · ' +
+    b.dT.toFixed(2) + ' chip × ' + Math.round(b.dF) + ' Hz';
+  $('surf-dims').textContent = '±' + Math.round(L/1000) + ' km · ' +
+    (dxm).toFixed(0) + ' m/px';
+  const dStep = tauHi<=8 ? 1 : tauHi<=16 ? 2 : 3;
+  $('lg-delay').textContent = dStep + (dStep>1?' chips':' chip');
+  const fStep = niceStep(Fmax/4.5);
+  $('lg-dopp').textContent = fStep>=1000 ? (fStep/1000).toFixed(1)+' kHz' : Math.round(fStep)+' Hz';
+}
+
+/* ============================ orchestration ============================ */
+function refresh(){
+  const regions = lastRegions = footprint(selBounds());
+  paintSurface();
+  drawSurfOverlay(regions);
+  drawDdmOverlay();
+  updateReadout(regions);
+}
+let queued = false;
+function recompute(){
+  if(queued) return;
+  queued = true;
+  requestAnimationFrame(() => {
+    queued = false;
+    computeAll();
+    drawDDM(); drawContours(); updateChrome(); refresh();
+    buildScene(); drawView();
+  });
+}
+
+/* ============================ interaction ============================ */
+function pickDdm(ev){
+  const r = $('cDdm').getBoundingClientRect();
+  const x = (ev.clientX-r.left)/r.width*D.W - D.L;
+  const y = (ev.clientY-r.top)/r.height*D.H - D.T;
+  if(x<0||y<0||x>=D.PW||y>=D.PH) return null;
+  return { fi: Math.min(NBF-1, Math.floor(x/(D.PW/NBF))),
+           ti: Math.min(NBT-1, Math.floor(y/(D.PH/NBT))) };
+}
+function pickSurf(ev){
+  const r = $('cSurf').getBoundingClientRect();
+  const px = (ev.clientX-r.left)/r.width*S.W - S.L;
+  const py = (ev.clientY-r.top)/r.height*S.H - S.T;
+  if(px<0||py<0||px>=S.PW||py>=S.PH) return null;
+  const x = -L + px/S.PW*2*L, y = L - py/S.PH*2*L;
+  const dT=(tauHi-tauLo)/NBT, dF=2*Fmax/NBF;
+  const ti = Math.floor((tauChips(x,y)-tauLo)/dT), fi = Math.floor((fRel(x,y)+Fmax)/dF);
+  return { x, y,
+           ti: Math.max(0,Math.min(NBT-1,ti)),
+           fi: Math.max(0,Math.min(NBF-1,fi)) };
+}
+const ddmPlot = $('ddmPlot'), surfPlot = $('surfPlot');
+
+ddmPlot.addEventListener('pointermove', e => {
+  if(st.pinned) return;
+  const p = pickDdm(e); if(!p) return;
+  if(p.fi===st.fi && p.ti===st.ti && !st.cursor) return;
+  st.fi=p.fi; st.ti=p.ti; st.cursor=null; refresh();
+});
+surfPlot.addEventListener('pointermove', e => {
+  const p = pickSurf(e); if(!p) return;
+  if(st.pinned){ st.cursor={x:p.x,y:p.y}; drawSurfOverlay(lastRegions); return; }
+  st.fi=p.fi; st.ti=p.ti; st.cursor={x:p.x,y:p.y}; refresh();
+});
+surfPlot.addEventListener('pointerleave', () => { st.cursor=null; refresh(); });
+
+function togglePin(){
+  st.pinned = !st.pinned;
+  $('pin').setAttribute('aria-pressed', String(st.pinned));
+  $('pin').textContent = st.pinned ? 'Release selection' : 'Pin selection';
+  refresh();
+}
+ddmPlot.addEventListener('click', togglePin);
+surfPlot.addEventListener('click', togglePin);
+$('pin').addEventListener('click', togglePin);
+
+function key(e){
+  const k = e.key;
+  let dx=0, dy=0;
+  if(k==='ArrowLeft') dx=-1; else if(k==='ArrowRight') dx=1;
+  else if(k==='ArrowUp') dy=-1; else if(k==='ArrowDown') dy=1;
+  else if(k==='Enter'||k===' '){ e.preventDefault(); togglePin(); return; }
+  else return;
+  e.preventDefault();
+  st.fi = Math.max(0, Math.min(NBF-1, st.fi+dx));
+  st.ti = Math.max(0, Math.min(NBT-1, st.ti+dy));
+  st.cursor = null; refresh();
+}
+ddmPlot.addEventListener('keydown', key);
+surfPlot.addEventListener('keydown', key);
+
+/* sliders */
+function bind(id, label, key2, fmt){
+  const el = $(id);
+  el.addEventListener('input', () => {
+    st[key2] = parseFloat(el.value);
+    $(label).textContent = fmt(st[key2]);
+    recompute();
+  });
+  $(label).textContent = fmt(st[key2]);
+}
+bind('s-theta','v-theta','theta', v => v + '°');
+bind('s-alt',  'v-alt',  'alt',   v => v + ' km');
+bind('s-psi',  'v-psi',  'psi',   v => sgn(v,0) + '°');
+bind('s-wind', 'v-wind', 'wind',  v => v + ' m/s');
+bind('s-chips','v-chips','chips', v => v + ' chips');
+
+$('cmV').addEventListener('click', () => setCmap('viridis'));
+$('cmT').addEventListener('click', () => setCmap('turbo'));
+function setCmap(name){
+  st.cmap = name;
+  $('cmV').setAttribute('aria-pressed', String(name==='viridis'));
+  $('cmT').setAttribute('aria-pressed', String(name==='turbo'));
+  $('ramp').style.background = rampCSS(name==='viridis' ? VIRIDIS : TURBO);
+  drawDDM();
+}
+$('glow').addEventListener('click', () => {
+  st.glow = !st.glow;
+  $('glow').setAttribute('aria-pressed', String(st.glow));
+  recompute();
+});
+
+/* ============================ 3-D scene ============================ */
+const V = { W:1120, H:530, az:-0.70, el:0.40, drag:null, scene:null };
+const gView = ctxOf('cView', V.W, V.H, DPR);
+const viewPlot = $('viewPlot');
+const PE = 1.60;                       /* plane half-extent, scene units */
+
+function traceRing(level, n){
+  const out=[];
+  for(let a=0;a<=n;a++){
+    const t=a*2*Math.PI/n, ux=Math.cos(t), uy=Math.sin(t);
+    const r=rayRadius(ux,uy,level); out.push([r*ux, r*uy]);
+  }
+  return out;
+}
+function traceGlisten(n, cap){
+  const tgt = scat(0,0)/Math.E, out=[];
+  for(let a=0;a<=n;a++){
+    const t=a*2*Math.PI/n, ux=Math.cos(t), uy=Math.sin(t);
+    let lo=0, hi=4.0e6;
+    for(let k=0;k<38;k++){ const m=0.5*(lo+hi); if(scat(ux*m,uy*m)>tgt) lo=m; else hi=m; }
+    const r=Math.min(lo,cap); out.push([r*ux, r*uy]);
+  }
+  return out;
+}
+function buildScene(){
+  const lv = [tauHi/3, 2*tauHi/3, tauHi];
+  const rings = lv.map(v => traceRing(v, 72));
+  let rmax = 0;
+  rings[2].forEach(q => { rmax = Math.max(rmax, Math.hypot(q[0],q[1])); });
+  const SH = 1/rmax;
+  const th = st.theta*Math.PI/180, psi = st.psi*Math.PI/180;
+  const HR = 1.15 + 0.55*(st.alt-300)/550;
+  V.scene = {
+    SH, th, psi, HR, levels: lv,
+    rings: rings.map(r => r.map(q => [q[0]*SH, q[1]*SH, 0])),
+    glisten: traceGlisten(64, PE/SH).map(q => [q[0]*SH, q[1]*SH, 0]),
+    Rr: [HR*Math.tan(th), 0, HR],
+    Rt: [-2.25*Math.sin(th), 0, 2.25*Math.cos(th)],
+    vhat: [Math.cos(psi), Math.sin(psi), 0]
+  };
+  $('view-chips').innerHTML =
+    [['\u03B8 incidence', st.theta+'\u00B0'],
+     ['receiver altitude', st.alt+' km'],
+     ['\u03C8 heading', sgn(st.psi,0)+'\u00B0'],
+     ['|v\u1D63\u2093|', (G.vrMag/1000).toFixed(2)+' km/s'],
+     ['wind', st.wind+' m/s'],
+     ['glistening zone', '\u00B1'+Math.round(Math.hypot(V.scene.glisten[16][0],V.scene.glisten[16][1])/SH/1000)+' km']]
+    .map(c => '<span class="lg">'+c[0]+' <b>'+c[1]+'</b></span>').join('')
+    + '<span class="lg" style="margin-left:auto">angles true \u00B7 distances compressed</span>';
+}
+
+function camera(){
+  const ce=Math.cos(V.el), se=Math.sin(V.el), ca=Math.cos(V.az), sa=Math.sin(V.az), d=8.5;
+  return { pos:[d*ce*ca, d*ce*sa, d*se], fwd:[-ce*ca,-ce*sa,-se],
+           right:[-sa,ca,0], up:[-se*ca,-se*sa,ce] };
+}
+function raw(p, cam){
+  const vx=p[0]-cam.pos[0], vy=p[1]-cam.pos[1], vz=p[2]-cam.pos[2];
+  const d = vx*cam.fwd[0]+vy*cam.fwd[1]+vz*cam.fwd[2];
+  return [ (vx*cam.right[0]+vy*cam.right[1]+vz*cam.right[2])/d,
+          -(vx*cam.up[0]   +vy*cam.up[1]   +vz*cam.up[2])/d ];
+}
+function drawView(){
+  if(!V.scene) buildScene();
+  const S3 = V.scene, cam = camera();
+  const key = [[-PE,-PE,0],[PE,-PE,0],[PE,PE,0],[-PE,PE,0], S3.Rt, S3.Rr,
+               [S3.Rr[0]+S3.vhat[0]*0.6, S3.Rr[1]+S3.vhat[1]*0.6, S3.Rr[2]],
+               [S3.Rr[0], S3.Rr[1], 0], [0,0,1.05]];
+  let u0=1e9,u1=-1e9,v0=1e9,v1=-1e9;
+  key.forEach(q => { const r=raw(q,cam);
+    u0=Math.min(u0,r[0]); u1=Math.max(u1,r[0]); v0=Math.min(v0,r[1]); v1=Math.max(v1,r[1]); });
+  const M = 42;
+  const f  = Math.min((V.W-2*M)/(u1-u0), (V.H-2*M)/(v1-v0));
+  const cx = V.W/2 - f*(u0+u1)/2, cy = V.H/2 - f*(v0+v1)/2;
+  const P = q => { const r=raw(q,cam); return [cx+f*r[0], cy+f*r[1]]; };
+  const g = gView;
+
+  g.setTransform(DPR,0,0,DPR,0,0);
+  g.fillStyle = PLOT_BG; g.fillRect(0,0,V.W,V.H);
+  g.lineJoin = 'round'; g.lineCap = 'round';
+
+  const path = pts => { g.beginPath();
+    pts.forEach((q,i) => { const a=P(q); i?g.lineTo(a[0],a[1]):g.moveTo(a[0],a[1]); }); };
+  const seg = (a,b) => { const A=P(a), B=P(b);
+    g.beginPath(); g.moveTo(A[0],A[1]); g.lineTo(B[0],B[1]); g.stroke(); };
+
+  /* sea plane */
+  path([[-PE,-PE,0],[PE,-PE,0],[PE,PE,0],[-PE,PE,0]]); g.closePath();
+  g.fillStyle = 'rgba(58,74,88,0.40)'; g.fill();
+  /* glistening zone */
+  path(S3.glisten); g.closePath();
+  g.fillStyle = 'rgba(104,134,154,0.42)'; g.fill();
+  g.strokeStyle = 'rgba(176,206,224,0.55)'; g.lineWidth = 1; g.setLineDash([4,4]);
+  g.stroke(); g.setLineDash([]);
+  /* grid */
+  g.strokeStyle = 'rgba(150,175,195,0.17)'; g.lineWidth = 1;
+  for(let k=-3;k<=3;k++){ const t=k*PE/3;
+    seg([t,-PE,0],[t,PE,0]); seg([-PE,t,0],[PE,t,0]); }
+  g.strokeStyle = 'rgba(160,180,196,0.45)';
+  path([[-PE,-PE,0],[PE,-PE,0],[PE,PE,0],[-PE,PE,0]]); g.closePath(); g.stroke();
+  /* iso-delay rings */
+  g.strokeStyle = C_DELAY; g.lineWidth = 1.5;
+  S3.rings.forEach(r => { path(r); g.stroke(); });
+  const lab = S3.rings[2][54], lp = P(lab);
+  halo(g, S3.levels[2].toFixed(0)+' chips', lp[0], lp[1]+12, C_DELAY, '500 10.5px '+MONO, 'center', 'middle');
+
+  /* receiver nadir drop + heading arc */
+  const nad = [S3.Rr[0], S3.Rr[1], 0];
+  g.strokeStyle = 'rgba(220,232,240,0.30)'; g.lineWidth = 1; g.setLineDash([3,4]);
+  seg(S3.Rr, nad); g.setLineDash([]);
+  g.strokeStyle = 'rgba(220,232,240,0.45)'; g.lineWidth = 1;
+  const np = P(nad); g.beginPath(); g.arc(np[0],np[1],2.6,0,7); g.stroke();
+  if(Math.abs(S3.psi) > 0.02){
+    const arc=[]; const n=18;
+    for(let k=0;k<=n;k++){ const a=S3.psi*k/n;
+      arc.push([nad[0]+0.34*Math.cos(a), nad[1]+0.34*Math.sin(a), 0]); }
+    g.strokeStyle = C_DOPP; g.lineWidth = 1.3; path(arc); g.stroke();
+    const mid = P(arc[n>>1]);
+    halo(g, '\u03C8 '+sgn(st.psi,0)+'\u00B0', mid[0], mid[1]-10, C_DOPP, '500 10.5px '+MONO, 'center','middle');
+  }
+  g.strokeStyle = 'rgba(79,211,230,0.45)'; g.lineWidth = 1.2; g.setLineDash([3,3]);
+  seg(nad, [nad[0]+S3.vhat[0]*0.5, nad[1]+S3.vhat[1]*0.5, 0]); g.setLineDash([]);
+
+  /* direct path */
+  g.strokeStyle = 'rgba(220,232,240,0.26)'; g.lineWidth = 1.2; g.setLineDash([5,5]);
+  seg(S3.Rt, S3.Rr); g.setLineDash([]);
+  const dm = P([(S3.Rt[0]+S3.Rr[0])/2, 0, (S3.Rt[2]+S3.Rr[2])/2]);
+  halo(g, 'direct', dm[0], dm[1]-9, '#8C9CA9', '500 10px '+MONO, 'center', 'middle');
+
+  /* zenith */
+  g.strokeStyle = 'rgba(255,255,255,0.34)'; g.lineWidth = 1; g.setLineDash([4,5]);
+  seg([0,0,0],[0,0,1.05]); g.setLineDash([]);
+  halo(g, 'zenith', P([0,0,1.05])[0], P([0,0,1.05])[1]-10, '#9FB0BE', '500 10px '+MONO, 'center','middle');
+
+  /* incidence arcs */
+  const arcAt = (sx, rad, col) => {
+    const a=[]; const n=20;
+    for(let k=0;k<=n;k++){ const t=S3.th*k/n; a.push([sx*rad*Math.sin(t), 0, rad*Math.cos(t)]); }
+    g.strokeStyle=col; g.lineWidth=1.3; path(a); g.stroke();
+    return P(a[n>>1]);
+  };
+  const m1 = arcAt(-1, 0.46, 'rgba(255,255,255,0.6)');
+  arcAt(1, 0.58, 'rgba(255,255,255,0.45)');
+  halo(g, '\u03B8 = '+st.theta+'\u00B0', m1[0]-6, m1[1]-9, '#E4EDF3', '600 11px '+MONO, 'center', 'middle');
+
+  /* rays */
+  g.strokeStyle = '#DCE6EC'; g.lineWidth = 1.8;
+  seg(S3.Rt, [0,0,0]); seg([0,0,0], S3.Rr);
+  /* scale break on the incident ray */
+  const bp = P([S3.Rt[0]*0.66, 0, S3.Rt[2]*0.66]);
+  const bq = P([S3.Rt[0]*0.60, 0, S3.Rt[2]*0.60]);
+  const ang = Math.atan2(bq[1]-bp[1], bq[0]-bp[0]) + Math.PI/2;
+  g.strokeStyle = PLOT_BG; g.lineWidth = 7; seg([S3.Rt[0]*0.655,0,S3.Rt[2]*0.655],[S3.Rt[0]*0.605,0,S3.Rt[2]*0.605]);
+  g.strokeStyle = '#DCE6EC'; g.lineWidth = 1.6;
+  [bp,bq].forEach(q => { g.beginPath();
+    g.moveTo(q[0]-6*Math.cos(ang+0.5), q[1]-6*Math.sin(ang+0.5));
+    g.lineTo(q[0]+6*Math.cos(ang+0.5), q[1]+6*Math.sin(ang+0.5)); g.stroke(); });
+
+  /* velocity arrow at the receiver */
+  const vt = [S3.Rr[0]+S3.vhat[0]*0.6, S3.Rr[1]+S3.vhat[1]*0.6, S3.Rr[2]];
+  g.strokeStyle = C_DOPP; g.lineWidth = 2;
+  seg(S3.Rr, vt);
+  const A=P(S3.Rr), B=P(vt), ah=Math.atan2(B[1]-A[1], B[0]-A[0]);
+  g.beginPath(); g.moveTo(B[0],B[1]);
+  g.lineTo(B[0]-9*Math.cos(ah-0.38), B[1]-9*Math.sin(ah-0.38));
+  g.lineTo(B[0]-9*Math.cos(ah+0.38), B[1]-9*Math.sin(ah+0.38));
+  g.closePath(); g.fillStyle=C_DOPP; g.fill();
+  halo(g, 'vRx', B[0]+11, B[1]-4, C_DOPP, '500 10.5px '+MONO, 'left', 'middle');
+
+  /* satellites */
+  const sat = (q, label, sub) => {
+    const a=P(q);
+    g.strokeStyle='#9FD8E4'; g.lineWidth=1.6;
+    g.beginPath(); g.moveTo(a[0]-13,a[1]); g.lineTo(a[0]-6,a[1]);
+    g.moveTo(a[0]+6,a[1]); g.lineTo(a[0]+13,a[1]); g.stroke();
+    g.fillStyle='#E8F0F6'; g.strokeStyle=PLOT_BG; g.lineWidth=2;
+    g.beginPath(); g.rect(a[0]-5.5,a[1]-5.5,11,11); g.stroke(); g.fill();
+    halo(g, label, a[0], a[1]-19, '#EFF5F9', '600 11px '+SANS, 'center', 'middle');
+    halo(g, sub,   a[0], a[1]-32, '#8C9CA9', '500 10px '+MONO, 'center', 'middle');
+  };
+  sat(S3.Rt, 'GPS transmitter', '20 200 km \u00B7 not to scale');
+  sat(S3.Rr, 'Receiver', st.alt+' km');
+
+  /* specular point */
+  const sp = P([0,0,0]);
+  g.strokeStyle='#fff'; g.lineWidth=1.6;
+  g.beginPath(); g.arc(sp[0],sp[1],4.5,0,7); g.stroke();
+  g.beginPath(); g.moveTo(sp[0]-8,sp[1]); g.lineTo(sp[0]+8,sp[1]);
+  g.moveTo(sp[0],sp[1]-8); g.lineTo(sp[0],sp[1]+8); g.stroke();
+  halo(g, 'specular point', sp[0], sp[1]+18, '#E4EDF3', '500 10.5px '+MONO, 'center', 'middle');
+
+  /* surface axis hints */
+  const xl = P([PE,0,0]), yl = P([0,PE,0]);
+  halo(g, '+x', xl[0]+10, xl[1], '#7E8E9B', '500 10px '+MONO, 'center','middle');
+  halo(g, '+y', yl[0], yl[1]-10, '#7E8E9B', '500 10px '+MONO, 'center','middle');
+}
+
+viewPlot.addEventListener('pointerdown', e => {
+  V.drag = {x:e.clientX, y:e.clientY, az:V.az, el:V.el};
+  viewPlot.setPointerCapture(e.pointerId);
+  viewPlot.classList.add('dragging');
+});
+viewPlot.addEventListener('pointermove', e => {
+  if(!V.drag) return;
+  V.az = V.drag.az + (e.clientX-V.drag.x)*0.007;
+  V.el = Math.max(0.10, Math.min(1.30, V.drag.el - (e.clientY-V.drag.y)*0.005));
+  drawView();
+});
+function endDrag(){ V.drag=null; viewPlot.classList.remove('dragging'); }
+viewPlot.addEventListener('pointerup', endDrag);
+viewPlot.addEventListener('pointercancel', endDrag);
+viewPlot.addEventListener('keydown', e => {
+  const k=e.key; let a=0,b=0;
+  if(k==='ArrowLeft') a=-0.12; else if(k==='ArrowRight') a=0.12;
+  else if(k==='ArrowUp') b=0.08; else if(k==='ArrowDown') b=-0.08; else return;
+  e.preventDefault();
+  V.az += a; V.el = Math.max(0.10, Math.min(1.30, V.el+b));
+  drawView();
+});
+
+/* ============================ go ============================ */
+$('ramp').style.background = rampCSS(VIRIDIS);
+computeAll();
+drawDDM(); drawContours(); updateChrome(); refresh();
+buildScene(); drawView();
+})();
+</script>
+</body>
+</html>
