@@ -116,7 +116,7 @@ h1{
 .sw.dash{height:0; border-top:2px dashed currentColor; width:18px}
 .sw.dot{width:9px; height:9px; border-radius:50%; background:#fff}
 .sw.box{width:13px; height:11px; border-radius:2px; background:var(--hot)}
-.cbar{display:flex; align-items:center; gap:10px}
+.cbar{display:flex; align-items:center; gap:10px; flex-wrap:wrap}
 .cbar .ramp{
   flex:1; height:9px; border-radius:5px; min-width:80px;
   box-shadow:inset 0 0 0 1px rgba(255,255,255,.14);
@@ -223,10 +223,14 @@ footer a{color:var(--accent)}
       </div>
       <div class="strip">
         <div class="cbar">
-          <span class="t">&minus;20&nbsp;dB</span>
+          <span class="t" id="cb-lo">&mdash;</span>
           <div class="ramp" id="ramp"></div>
-          <span class="t">0&nbsp;dB</span>
+          <span class="t" id="cb-hi">&mdash;</span>
           <div class="cmaps">
+            <button id="scA" aria-pressed="true">dBW</button>
+            <button id="scR" aria-pressed="false">rel pk</button>
+          </div>
+          <div class="cmaps" style="margin-left:0">
             <button id="cmV" aria-pressed="true">Viridis</button>
             <button id="cmT" aria-pressed="false">Turbo</button>
           </div>
@@ -261,6 +265,7 @@ footer a{color:var(--accent)}
     <div class="stat"><span class="k">Extra path</span><span class="v" id="r-path">&mdash;</span></div>
     <div class="stat"><span class="k">Doppler bin</span><span class="v" id="r-dopp">&mdash;</span></div>
     <div class="stat"><span class="k">Cell power</span><span class="v" id="r-pow">&mdash;</span></div>
+    <div class="stat"><span class="k">Cell &sigma;&#8304; (NBRCS)</span><span class="v" id="r-s0">&mdash;</span></div>
     <div class="stat hotstat"><span class="k">Surface footprint</span><span class="v" id="r-area">&mdash;</span></div>
     <div class="stat"><span class="k">Patch centres</span><span class="v" id="r-cent">&mdash;</span></div>
   </div>
@@ -327,7 +332,12 @@ footer a{color:var(--accent)}
   </section>
 
   <footer>
-    <p><strong>Model.</strong> Flat-plane bistatic geometry in a specular-centred ENU frame; delay <code>(|r&minus;R&#7451;| + |R&#7523;&minus;r| &minus; d&#8320;)/c</code> in L1 C/A chips (1&nbsp;chip = 293.05&nbsp;m), Doppler <code>(&#251;&#7451;&middot;v&#7451; &minus; &#251;&#7523;&middot;v&#7523;)/&lambda;</code> referenced to the specular point. Surface power uses Zavorotny&ndash;Voronovich geometric optics, <code>&sigma;&#8304; = &pi;|&#8476;|&sup2;(q/q&#7527;)&#8308;P(&minus;q&#8869;/q&#7527;)</code>, with a Gaussian slope PDF and Katzberg-scaled Cox&ndash;Munk mean-square slope. The DDM is formed by binning the surface integral and convolving with <code>|&Lambda;(&Delta;&tau;)|&sup2;&middot;|sinc(&Delta;f&middot;T&#7522;)|&sup2;</code> for T&#7522;&nbsp;=&nbsp;1&nbsp;ms, so the map and the highlighted footprints come from exactly the same computation. Earth curvature, antenna pattern and receiver noise are omitted.</p>
+    <p><strong>Model.</strong> Flat-plane bistatic geometry in a specular-centred ENU frame; delay <code>(|r&minus;R&#7451;| + |R&#7523;&minus;r| &minus; d&#8320;)/c</code> in L1 C/A chips (1&nbsp;chip = 293.05&nbsp;m), Doppler <code>(&#251;&#7451;&middot;v&#7451; &minus; &#251;&#7523;&middot;v&#7523;)/&lambda;</code> referenced to the specular point. Surface power uses Zavorotny&ndash;Voronovich geometric optics, <code>&sigma;&#8304; = &pi;|&#8476;|&sup2;(q/q&#7527;)&#8308;P(&minus;q&#8869;/q&#7527;)</code>, with a Gaussian slope PDF and Katzberg-scaled Cox&ndash;Munk mean-square slope. The DDM is formed by binning the surface integral and convolving with <code>|&Lambda;(&Delta;&tau;)|&sup2;&middot;|sinc(&Delta;f&middot;T&#7522;)|&sup2;</code> for T&#7522;&nbsp;=&nbsp;1&nbsp;ms, so the map and the highlighted footprints come from exactly the same computation. Absolute power uses the bistatic radar equation
+      <code>P&#7523; = P&#7524;G&#7524;G&#7523;&lambda;&sup2;&sigma;/((4&pi;)&sup3;R&#7524;&sup2;R&#7523;&sup2;)</code> with a <em>stated</em> link budget &mdash;
+      transmit EIRP 26.6&nbsp;dBW and a flat 14.5&nbsp;dBi receive gain &mdash; so the dBW figures are model values,
+      not calibrated instrument counts. &sigma;&#8304; is the bin&rsquo;s BRCS divided by its effective scattering area,
+      which makes it nearly independent of bin size; the dBW value is not, and rises as you widen the delay span.
+      Earth curvature, the antenna pattern and receiver noise are omitted.</p>
   </footer>
 </div>
 
@@ -343,6 +353,11 @@ const H_T = 20200e3, V_T = 3874;         // GPS altitude / orbital speed
 const PSI_T = 150 * Math.PI / 180;       // fixed transmitter track azimuth
 const T_I = 1e-3;                        // coherent integration time
 const REFL = 0.6;                        // |R|^2, seawater at L1
+/* link budget for absolute power. Stated, not fitted - see the model note. */
+const EIRP_DBW = 26.6;                   // GPS L1 C/A transmit EIRP, P_t*G_t
+const GRX_DBI  = 14.5;                   // receiver antenna peak gain (no pattern modelled)
+const LINK = Math.pow(10, EIRP_DBW/10) * Math.pow(10, GRX_DBI/10)
+             * LAM*LAM / Math.pow(4*Math.PI, 3);   // W.m^2
 
 const PLOT_BG = '#080D14';
 const AX = '#8FA1B0', AX_DIM = 'rgba(160,180,196,0.30)';
@@ -373,7 +388,7 @@ function rampCSS(stops){ return 'linear-gradient(90deg,' + stops.join(',') + ')'
 /* ============================ state ============================ */
 const st = {
   theta:30, alt:520, psi:0, wind:8, chips:12,
-  cmap:'viridis', glow:true, pinned:false,
+  cmap:'viridis', scale:'abs', glow:true, pinned:false,
   fi: Math.round(NBF*0.62), ti: Math.round(NBT*0.28),
   cursor:null            // {x,y} in metres, when pointing at the surface
 };
@@ -411,16 +426,22 @@ function fAbs(x,y){
 const fRel = (x,y) => fAbs(x,y) - G.f0;
 
 /* sigma0 * (1/R1^2 R2^2), normalised to the specular value */
-function scat(x,y){
+/* One surface point: fills _sig (dimensionless sigma0) and _rng (1 / Rt^2 Rr^2).
+   Scratch globals rather than a returned pair - this runs 194k times per rebuild. */
+let _sig = 0, _rng = 0;
+function scatAt(x,y){
   const ax=x-G.Rt[0], ay=y-G.Rt[1], az=-G.Rt[2], d1=Math.hypot(ax,ay,az);
   const bx=G.Rr[0]-x, by=G.Rr[1]-y, bz=G.Rr[2], d2=Math.hypot(bx,by,bz);
   const qx = bx/d2 - ax/d1, qy = by/d2 - ay/d1, qz = bz/d2 - az/d1;
-  if(qz <= 1e-9) return 0;
+  if(qz <= 1e-9){ _sig = 0; _rng = 0; return; }
   const q2 = qx*qx+qy*qy+qz*qz, qz2 = qz*qz;
   const sx = -qx/qz, sy = -qy/qz;
   const P  = Math.exp(-(sx*sx+sy*sy)/(2*G.mss)) / (2*Math.PI*G.mss);
-  return Math.PI*REFL*(q2*q2)/(qz2*qz2)*P / (d1*d1*d2*d2);
+  _sig = Math.PI*REFL*(q2*q2)/(qz2*qz2)*P;
+  _rng = 1/(d1*d1*d2*d2);
 }
+/* sigma0 alone - the glistening-zone shape does not involve the range factor */
+function scat(x,y){ scatAt(x,y); return _sig; }
 
 /* radius along a ray where the delay reaches `target` chips */
 function rayRadius(ux,uy,target){
@@ -442,7 +463,12 @@ const fTau = new Float32Array(NF*NF);
 const fDop = new Float32Array(NF*NF);
 const base = new Uint8ClampedArray(NF*NF*3);
 let L = 1e5, dxm = 1, Fmax = 5000, tauLo = -1, tauHi = 12;
-let ddm = new Float32Array(NBF*NBT), ddmDB = new Float32Array(NBF*NBT);
+let ddmW  = new Float32Array(NBF*NBT);   // received power, W
+let ddmB  = new Float32Array(NBF*NBT);   // bistatic RCS, m^2
+let ddmA  = new Float32Array(NBF*NBT);   // effective scattering area, m^2
+let ddmDB = new Float32Array(NBF*NBT);   // dB relative to peak (drives the colours)
+let peakW = 0;
+const pwr = new Float32Array(NF*NF);
 const sc = new Float32Array(NF*NF);
 const _mark = new Uint8Array(NF*NF), _seen = new Uint8Array(NF*NF);
 let lastRegions = [];
@@ -472,8 +498,9 @@ function computeAll(){
       const x = -L + (i+0.5)*dxm, p = j*NF+i;
       fTau[p] = tauChips(x,y);
       fDop[p] = fRel(x,y);
-      const s = scat(x,y);
-      sc[p] = s; if(s>smax) smax=s;
+      scatAt(x,y);
+      sc[p] = _sig; if(_sig>smax) smax=_sig;
+      pwr[p] = _sig * _rng;
     }
   }
   for(let p=0;p<NF*NF;p++){
@@ -485,31 +512,42 @@ function computeAll(){
 
   /* DDM: bin the surface integral, then blur by |WAF|^2 */
   const dT = (tauHi-tauLo)/NBT, dF = 2*Fmax/NBF;
-  const raw = new Float32Array(NBF*NBT);
+  const dA = dxm*dxm;                       // surface area per field pixel, m^2
+  const rawP = new Float32Array(NBF*NBT);   // power
+  const rawB = new Float32Array(NBF*NBT);   // sigma0 * area  -> BRCS
+  const rawA = new Float32Array(NBF*NBT);   // area, for NBRCS
   for(let p=0;p<NF*NF;p++){
     const ti = Math.floor((fTau[p]-tauLo)/dT); if(ti<0||ti>=NBT) continue;
     const fi = Math.floor((fDop[p]+Fmax)/dF);  if(fi<0||fi>=NBF) continue;
-    raw[ti*NBF+fi] += sc[p];
+    const b = ti*NBF+fi;
+    rawP[b] += LINK * pwr[p] * dA;
+    rawB[b] += sc[p] * dA;
+    rawA[b] += dA;
   }
   const kT=[], kF=[];
   for(let k=-3;k<=3;k++){ const u=Math.abs(k*dT); kT.push(u<1 ? (1-u)*(1-u) : 0); }
   for(let k=-4;k<=4;k++){ const u=k*dF*T_I; kF.push(u===0?1:Math.pow(Math.sin(Math.PI*u)/(Math.PI*u),2)); }
   const nT = kT.reduce((a,b)=>a+b,0), nF = kF.reduce((a,b)=>a+b,0);
 
-  const tmp = new Float32Array(NBF*NBT);
-  for(let t=0;t<NBT;t++) for(let f=0;f<NBF;f++){
-    let s=0;
-    for(let k=-4;k<=4;k++){ const q=f+k; if(q>=0&&q<NBF) s += raw[t*NBF+q]*kF[k+4]; }
-    tmp[t*NBF+f] = s/nF;
-  }
-  let dmax = 0;
-  for(let t=0;t<NBT;t++) for(let f=0;f<NBF;f++){
-    let s=0;
-    for(let k=-3;k<=3;k++){ const q=t+k; if(q>=0&&q<NBT) s += tmp[q*NBF+f]*kT[k+3]; }
-    s/=nT; ddm[t*NBF+f]=s; if(s>dmax) dmax=s;
-  }
+  const blur = (src, dst) => {
+    const tmp = new Float32Array(NBF*NBT);
+    for(let t=0;t<NBT;t++) for(let f=0;f<NBF;f++){
+      let a=0;
+      for(let k=-4;k<=4;k++){ const q=f+k; if(q>=0&&q<NBF) a += src[t*NBF+q]*kF[k+4]; }
+      tmp[t*NBF+f] = a/nF;
+    }
+    for(let t=0;t<NBT;t++) for(let f=0;f<NBF;f++){
+      let a=0;
+      for(let k=-3;k<=3;k++){ const q=t+k; if(q>=0&&q<NBT) a += tmp[q*NBF+f]*kT[k+3]; }
+      dst[t*NBF+f] = a/nT;
+    }
+  };
+  blur(rawP, ddmW); blur(rawB, ddmB); blur(rawA, ddmA);
+
+  peakW = 0;
+  for(let p=0;p<NBF*NBT;p++) if(ddmW[p]>peakW) peakW = ddmW[p];
   for(let p=0;p<NBF*NBT;p++){
-    ddmDB[p] = dmax>0 ? 10*Math.log10(Math.max(ddm[p]/dmax, 1e-9)) : DB_FLOOR;
+    ddmDB[p] = peakW>0 ? 10*Math.log10(Math.max(ddmW[p]/peakW, 1e-9)) : DB_FLOOR;
   }
 }
 
@@ -829,14 +867,20 @@ function drawSurfOverlay(regions){
 /* ============================ readout ============================ */
 const $ = id => document.getElementById(id);
 const sgn = (v,dp) => (v>0?'+':v<0?'−':'') + Math.abs(v).toFixed(dp);
+const fdb = v => v.toFixed(1).replace('-','−');
 
 function updateReadout(regions){
   const b = selBounds();
   $('r-delay').innerHTML = b.tlo.toFixed(2) + ' – ' + b.thi.toFixed(2) + ' <small>chips</small>';
   $('r-path').innerHTML  = Math.round(b.tlo*CHIP_M) + ' – ' + Math.round(b.thi*CHIP_M) + ' <small>m</small>';
   $('r-dopp').innerHTML  = sgn(b.flo/1000,2) + ' – ' + sgn(b.fhi/1000,2) + ' <small>kHz</small>';
-  const db = ddmDB[st.ti*NBF+st.fi];
-  $('r-pow').innerHTML   = (db<=DB_FLOOR ? '≤ −20.0' : sgn(db,1)) + ' <small>dB</small>';
+  const b0 = st.ti*NBF+st.fi;
+  const rel = ddmDB[b0], w = ddmW[b0], ar = ddmA[b0];
+  const s0  = ar>0 ? ddmB[b0]/ar : 0;
+  $('r-pow').innerHTML = st.scale==='abs'
+    ? (w>0 ? fdb(10*Math.log10(w)) : '—') + ' <small>dBW</small>'
+    : (rel<=DB_FLOOR ? '≤ −20.0' : sgn(rel,1)) + ' <small>dB rel pk</small>';
+  $('r-s0').innerHTML = (s0>0 ? fdb(10*Math.log10(s0)) : '—') + ' <small>dB</small>';
 
   const cell = (dxm/1000)*(dxm/1000);
   if(!regions.length){
@@ -864,6 +908,14 @@ function updateChrome(){
   $('lg-delay').textContent = dStep + (dStep>1?' chips':' chip');
   const fStep = niceStep(Fmax/4.5);
   $('lg-dopp').textContent = fStep>=1000 ? (fStep/1000).toFixed(1)+' kHz' : Math.round(fStep)+' Hz';
+  if(st.scale==='abs' && peakW>0){
+    const pk = 10*Math.log10(peakW);
+    $('cb-lo').innerHTML = fdb(pk+DB_FLOOR)+'&nbsp;dBW';
+    $('cb-hi').innerHTML = fdb(pk)+'&nbsp;dBW';
+  } else {
+    $('cb-lo').innerHTML = '−20&nbsp;dB';
+    $('cb-hi').innerHTML = '0&nbsp;dB';
+  }
 }
 
 /* ============================ orchestration ============================ */
@@ -963,6 +1015,14 @@ bind('s-psi',  'v-psi',  'psi',   v => sgn(v,0) + '°');
 bind('s-wind', 'v-wind', 'wind',  v => v + ' m/s');
 bind('s-chips','v-chips','chips', v => v + ' chips');
 
+$('scA').addEventListener('click', () => setScale('abs'));
+$('scR').addEventListener('click', () => setScale('rel'));
+function setScale(m){
+  st.scale = m;
+  $('scA').setAttribute('aria-pressed', String(m==='abs'));
+  $('scR').setAttribute('aria-pressed', String(m==='rel'));
+  updateChrome(); refresh();
+}
 $('cmV').addEventListener('click', () => setCmap('viridis'));
 $('cmT').addEventListener('click', () => setCmap('turbo'));
 function setCmap(name){

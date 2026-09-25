@@ -41,6 +41,33 @@ Omitted: Earth curvature, antenna pattern, receiver noise, and any sea-state dir
 The 3-D scene keeps **angles exact** but compresses distances so the 20 200 km transmitter
 range fits on screen.
 
+## Absolute values
+
+The DDM is reported in absolute units, not normalised to its own peak:
+
+- **Received power (dBW)** from the bistatic radar equation
+  `P_r = P_t G_t G_r λ² σ / ((4π)³ R_t² R_r²)`, with a *stated* link budget — 26.6 dBW
+  transmit EIRP and a flat 14.5 dBi receive gain. These are model values under that budget,
+  not calibrated instrument counts.
+- **σ⁰ (NBRCS, dB)** — the bin's bistatic radar cross section divided by its effective
+  scattering area, so it is nearly independent of bin size. The dBW figure is not, and rises
+  as you widen the delay span.
+
+σ⁰ carries the wind signal. Sweeping the wind control at the default geometry:
+
+| Wind | σ⁰ | DDM peak |
+|---|---|---|
+| 3 m/s | 18.2 dB | −171.7 dBW |
+| 5 m/s | 16.4 dB | −173.6 dBW |
+| 8 m/s | 14.6 dB | −175.4 dBW |
+| 12 m/s | 13.0 dB | −177.1 dBW |
+| 20 m/s | 11.0 dB | −179.2 dBW |
+
+That ~7 dB fall from 3 to 20 m/s is the geophysical model function GNSS-R wind retrieval
+rests on: rougher sea tilts facets away from the specular direction, so less power returns.
+
+A `rel pk` button restores the conventional peak-normalised view.
+
 ## Controls
 
 Incidence angle, receiver altitude, receiver heading ψ, wind speed, and DDM delay span.
