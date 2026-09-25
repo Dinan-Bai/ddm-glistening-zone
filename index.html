@@ -88,8 +88,8 @@ h1{
   border-radius:var(--radius); box-shadow:var(--shadow); overflow:hidden;
 }
 .card-head{
-  display:flex; align-items:baseline; justify-content:space-between; gap:12px;
-  padding:13px 16px 11px; border-bottom:1px solid var(--line);
+  display:flex; align-items:baseline; justify-content:space-between; gap:4px 12px;
+  flex-wrap:wrap; padding:13px 16px 11px; border-bottom:1px solid var(--line);
 }
 .card-head h2{font-size:14px; font-weight:600; margin:0; letter-spacing:-.005em}
 .card-head .sub{
@@ -118,8 +118,12 @@ h1{
 .sw.box{width:13px; height:11px; border-radius:2px; background:var(--hot)}
 .cbar{display:flex; align-items:center; gap:10px; flex-wrap:wrap}
 .cbar .ramp{
-  flex:1; height:9px; border-radius:5px; min-width:80px;
+  position:relative; flex:1; height:9px; border-radius:5px; min-width:80px;
   box-shadow:inset 0 0 0 1px rgba(255,255,255,.14);
+}
+.cbar .ramp .pk{
+  position:absolute; top:-4px; bottom:-4px; width:2px; margin-left:-1px;
+  background:#fff; border-radius:1px; box-shadow:0 0 0 1px rgba(0,0,0,.6);
 }
 .cbar .t{
   font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:10.5px; color:#9FB0BE;
@@ -224,7 +228,7 @@ footer a{color:var(--accent)}
       <div class="strip">
         <div class="cbar">
           <span class="t" id="cb-lo">&mdash;</span>
-          <div class="ramp" id="ramp"></div>
+          <div class="ramp" id="ramp"><span class="pk" id="ramp-pk" hidden></span></div>
           <span class="t" id="cb-hi">&mdash;</span>
           <div class="cmaps">
             <button id="scA" aria-pressed="true">dBW</button>
@@ -368,7 +372,8 @@ const D = { W:536, H:430, L:64, T:16, PW:440, PH:350 };   // DDM
 const S = { W:536, H:512, L:64, T:16, PW:440, PH:440 };   // surface
 const NF = 440;                                            // field resolution == S.PW
 const NBF = 36, NBT = 28;                                  // DDM bins: doppler x delay
-const DB_FLOOR = -20;
+const DB_FLOOR = -20;            // dynamic range of the 'rel pk' view
+const ABS_LO = -199.2, ABS_HI = -170.3;   // fixed dBW window: same colours in every scenario
 
 /* ============================ colormaps ============================ */
 const VIRIDIS = ['#440154','#482878','#3E4A89','#31688E','#26828E','#1F9E89','#35B779','#6DCD59','#B4DE2C','#FDE725'];
@@ -623,7 +628,14 @@ function drawDDM(){
   const lut = LUTS[st.cmap];
   const img = gHeat.createImageData(NBF, NBT), px = img.data;
   for(let t=0;t<NBT;t++) for(let f=0;f<NBF;f++){
-    const v = Math.max(0, Math.min(1, (ddmDB[t*NBF+f]-DB_FLOOR)/(0-DB_FLOOR)));
+    let v;
+    if(st.scale==='abs'){
+      const w = ddmW[t*NBF+f];
+      v = ((w>0 ? 10*Math.log10(w) : ABS_LO) - ABS_LO) / (ABS_HI-ABS_LO);
+    } else {
+      v = (ddmDB[t*NBF+f]-DB_FLOOR)/(0-DB_FLOOR);
+    }
+    v = Math.max(0, Math.min(1, v));
     const k = Math.round(v*255)*3, o = (t*NBF+f)*4;
     px[o]=lut[k]; px[o+1]=lut[k+1]; px[o+2]=lut[k+2]; px[o+3]=255;
   }
@@ -900,22 +912,37 @@ function updateReadout(regions){
 }
 function updateChrome(){
   const b = selBounds();
-  $('ddm-dims').textContent = NBF + ' × ' + NBT + ' cells · ' +
-    b.dT.toFixed(2) + ' chip × ' + Math.round(b.dF) + ' Hz';
   $('surf-dims').textContent = '±' + Math.round(L/1000) + ' km · ' +
     (dxm).toFixed(0) + ' m/px';
   const dStep = tauHi<=8 ? 1 : tauHi<=16 ? 2 : 3;
   $('lg-delay').textContent = dStep + (dStep>1?' chips':' chip');
   const fStep = niceStep(Fmax/4.5);
   $('lg-dopp').textContent = fStep>=1000 ? (fStep/1000).toFixed(1)+' kHz' : Math.round(fStep)+' Hz';
-  if(st.scale==='abs' && peakW>0){
-    const pk = 10*Math.log10(peakW);
-    $('cb-lo').innerHTML = fdb(pk+DB_FLOOR)+'&nbsp;dBW';
-    $('cb-hi').innerHTML = fdb(pk)+'&nbsp;dBW';
+  const pkDB = peakW>0 ? 10*Math.log10(peakW) : null;
+  const mk = $('ramp-pk');
+  if(st.scale==='abs'){
+    $('cb-lo').innerHTML = fdb(ABS_LO)+'&nbsp;dBW';
+    $('cb-hi').innerHTML = fdb(ABS_HI)+'&nbsp;dBW';
+    if(pkDB===null){ mk.hidden = true; }
+    else {
+      const f = (pkDB-ABS_LO)/(ABS_HI-ABS_LO);
+      const clip = pkDB > ABS_HI || pkDB < ABS_LO;
+      mk.hidden = false;
+      mk.style.left = (100*Math.max(0,Math.min(1,f))).toFixed(2)+'%';
+      mk.style.background = clip ? '#F5A63C' : '#ffffff';
+      mk.title = clip
+        ? 'peak '+fdb(pkDB)+' dBW is outside the fixed window \u2014 brightest cells are saturated'
+        : 'this scenario\u2019s peak: '+fdb(pkDB)+' dBW';
+    }
   } else {
     $('cb-lo').innerHTML = '−20&nbsp;dB';
     $('cb-hi').innerHTML = '0&nbsp;dB';
+    mk.hidden = true;
   }
+  $('ddm-dims').innerHTML = NBF+'×'+NBT+' · '+b.dT.toFixed(2)+' chip × '+Math.round(b.dF)+' Hz'
+    + (pkDB===null ? '' : ' · pk '+fdb(pkDB)+' dBW'
+       + (st.scale==='abs' && (pkDB>ABS_HI||pkDB<ABS_LO)
+          ? ' <span style="color:#F5A63C">clipped</span>' : ''));
 }
 
 /* ============================ orchestration ============================ */
@@ -1021,7 +1048,7 @@ function setScale(m){
   st.scale = m;
   $('scA').setAttribute('aria-pressed', String(m==='abs'));
   $('scR').setAttribute('aria-pressed', String(m==='rel'));
-  updateChrome(); refresh();
+  drawDDM(); updateChrome(); refresh();
 }
 $('cmV').addEventListener('click', () => setCmap('viridis'));
 $('cmT').addEventListener('click', () => setCmap('turbo'));

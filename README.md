@@ -66,7 +66,16 @@ The DDM is reported in absolute units, not normalised to its own peak:
 That ~7 dB fall from 3 to 20 m/s is the geophysical model function GNSS-R wind retrieval
 rests on: rougher sea tilts facets away from the specular direction, so less power returns.
 
-A `rel pk` button restores the conventional peak-normalised view.
+The colour scale is **fixed at −199.2 to −170.3 dBW** in every scenario, so two DDMs
+taken at different wind speeds or geometries can be compared directly — a dimmer map
+really does mean less returned power, not just a rescaled colourbar. A white caret on the
+colourbar marks where the current scenario's peak falls; it turns amber and the header
+reads `clipped` when the peak runs past the top of the window, which happens for the
+brightest corner of the parameter space (wide delay span at low wind, low incidence and
+low altitude, peaking near −162.7 dBW).
+
+A `rel pk` button restores the conventional peak-normalised view, which re-floats the
+scale to each scenario's own peak.
 
 ## Controls
 
